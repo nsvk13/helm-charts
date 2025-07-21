@@ -1,0 +1,155 @@
+---
+# Source: argocd-chart/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-release-argocd-chart-sa
+  labels:
+    helm.sh/chart: argocd-chart
+    app.kubernetes.io/name: argocd-chart
+    app.kubernetes.io/instance: test-release
+    app.kubernetes.io/version: "v2.12.6"
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: argocd-chart/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+    name: argocd-admin-secret
+type: Opaque
+data:
+    password: ""
+---
+# Source: argocd-chart/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  labels:
+    helm.sh/chart: argocd-chart
+    app.kubernetes.io/name: argocd-chart
+    app.kubernetes.io/instance: test-release
+    app.kubernetes.io/version: "v2.12.6"
+    app.kubernetes.io/managed-by: Helm
+data:
+  application.instanceLabelKey: argocd.argoproj.io/instance
+  server.insecure: "true"
+  policy.default: role:readonly
+  policy.csv: |
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+    g, argocd-admins, role:admin
+---
+# Source: argocd-chart/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: test-release-argocd-chart-role
+  labels:
+    helm.sh/chart: argocd-chart
+    app.kubernetes.io/name: argocd-chart
+    app.kubernetes.io/instance: test-release
+    app.kubernetes.io/version: "v2.12.6"
+    app.kubernetes.io/managed-by: Helm
+rules:
+- apiGroups: [""]
+  resources: ["secrets", "configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+---
+# Source: argocd-chart/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: test-release-argocd-chart-binding
+  labels:
+    helm.sh/chart: argocd-chart
+    app.kubernetes.io/name: argocd-chart
+    app.kubernetes.io/instance: test-release
+    app.kubernetes.io/version: "v2.12.6"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: test-release-argocd-chart-role
+subjects:
+- kind: ServiceAccount
+  name: test-release-argocd-chart-sa
+  namespace: default
+---
+# Source: argocd-chart/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-release-argocd-chart-service
+  labels:
+    helm.sh/chart: argocd-chart
+    app.kubernetes.io/name: argocd-chart
+    app.kubernetes.io/instance: test-release
+    app.kubernetes.io/version: "v2.12.6"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/name: argocd-chart
+    app.kubernetes.io/instance: test-release
+---
+# Source: argocd-chart/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-release-argocd-chart
+  labels:
+    helm.sh/chart: argocd-chart
+    app.kubernetes.io/name: argocd-chart
+    app.kubernetes.io/instance: test-release
+    app.kubernetes.io/version: "v2.12.6"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-chart
+      app.kubernetes.io/instance: test-release
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-chart
+        app.kubernetes.io/instance: test-release
+    spec:
+      serviceAccountName: test-release-argocd-chart-sa
+      containers:
+      - name: argocd-server
+        image: "quay.io/argoproj/argocd:v2.12.6"
+        imagePullPolicy: IfNotPresent
+        command: ["argocd-server"]
+        args:
+          - "--insecure"
+          - "--staticassets"
+          - "/shared/app"
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ARGOCD_SERVER_INSECURE
+          value: "true"
+        - name: ARGOCD_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: argocd-admin-secret
+              key: password
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
